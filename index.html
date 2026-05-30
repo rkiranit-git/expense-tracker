@@ -2192,6 +2192,10 @@ function changeYear(delta) {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   render();
+  // Auto-load this year's data from Drive (non-blocking)
+  if (typeof gdriveState !== 'undefined' && gdriveState.connected) {
+    gdriveLoadNow();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2237,11 +2241,13 @@ const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const gdriveState = {
   clientId:  localStorage.getItem('et_gdrive_cid') || '',
   token:     null,
-  fileId:    localStorage.getItem('et_gdrive_fid') || '',
   connected: false,
   syncing:   false,
   lastSaved: '',
-  saveTimer: null
+  saveTimer: null,
+  // Per-year file IDs stored as et_gdrive_fid_{year}
+  getFileId(year)         { return localStorage.getItem('et_gdrive_fid_' + year) || ''; },
+  setFileId(year, fileId) { if (fileId) localStorage.setItem('et_gdrive_fid_' + year, fileId); else localStorage.removeItem('et_gdrive_fid_' + year); }
 };
 
 // ── Button / UI ──────────────────────────────────────────
@@ -2316,8 +2322,9 @@ function gdriveSetupSave() {
 }
 function gdriveDisconnect() {
   gdriveState.token = null; gdriveState.connected = false;
-  gdriveState.fileId = ''; gdriveState.lastSaved = '';
-  localStorage.removeItem('et_gdrive_fid');
+  gdriveState.lastSaved = '';
+  // Clear all per-year file IDs
+  Object.keys(localStorage).filter(k => k.startsWith('et_gdrive_fid_')).forEach(k => localStorage.removeItem(k));
   closeGDriveSetup();
   updateDriveBtn(); renderSyncBanner();
 }
@@ -2393,50 +2400,54 @@ function scheduleDriveSave() {
 async function gdriveSaveNow(showAlert) {
   if (!gdriveState.connected || !gdriveState.token || gdriveState.syncing) return;
   gdriveState.syncing = true; updateDriveBtn();
+  const yr = currentYear;
   try {
-    const buf  = buildExcelBuffer(currentYear);
-    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const fname = `ExpenseTracker_${currentYear}.xlsx`;
+    const buf   = buildExcelBuffer(yr);
+    const blob  = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const fname = 'ExpenseTracker_' + yr + '.xlsx';
+    let fileId  = gdriveState.getFileId(yr);
 
-    if (gdriveState.fileId) {
-      // Update existing
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${gdriveState.fileId}?uploadType=media`, {
+    if (fileId) {
+      // Update existing year-specific file
+      const upd = await fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', {
         method: 'PATCH',
-        headers: {'Authorization': `Bearer ${gdriveState.token}`, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
+        headers: {'Authorization': 'Bearer ' + gdriveState.token, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
         body: blob
       });
-    } else {
-      // Find or create
-      const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${fname}' and trashed=false&fields=files(id,name)`, {
-        headers: {'Authorization': `Bearer ${gdriveState.token}`}
+      // If file was deleted from Drive, clear stored ID and recreate
+      if (upd.status === 404) { gdriveState.setFileId(yr, ''); fileId = ''; }
+    }
+    if (!fileId) {
+      // Search for existing file by name for this year
+      const search = await fetch("https://www.googleapis.com/drive/v3/files?q=name='" + fname + "' and trashed=false&fields=files(id,name)", {
+        headers: {'Authorization': 'Bearer ' + gdriveState.token}
       });
       const found = await search.json();
       if (found.files && found.files.length > 0) {
-        gdriveState.fileId = found.files[0].id;
-        localStorage.setItem('et_gdrive_fid', gdriveState.fileId);
-        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${gdriveState.fileId}?uploadType=media`, {
+        fileId = found.files[0].id;
+        gdriveState.setFileId(yr, fileId);
+        await fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', {
           method: 'PATCH',
-          headers: {'Authorization': `Bearer ${gdriveState.token}`, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
+          headers: {'Authorization': 'Bearer ' + gdriveState.token, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
           body: blob
         });
       } else {
-        // Create new file
+        // Create new file for this year
         const meta = JSON.stringify({name: fname, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
         const form = new FormData();
         form.append('metadata', new Blob([meta], {type:'application/json'}));
         form.append('file', blob);
         const res  = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-          method: 'POST', headers: {'Authorization': `Bearer ${gdriveState.token}`}, body: form
+          method: 'POST', headers: {'Authorization': 'Bearer ' + gdriveState.token}, body: form
         });
         const data = await res.json();
-        gdriveState.fileId = data.id;
-        localStorage.setItem('et_gdrive_fid', gdriveState.fileId);
+        gdriveState.setFileId(yr, data.id);
       }
     }
     const now = new Date();
     gdriveState.lastSaved = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     unsavedChanges = false;
-    if (showAlert) alert(`✅ Saved to Google Drive as ${fname}`);
+    if (showAlert) alert('✅ Saved to Google Drive as ' + fname);
   } catch(e) {
     console.error('Drive save error:', e);
     if (showAlert) alert('❌ Save failed: ' + e.message);
@@ -2448,31 +2459,41 @@ async function gdriveSaveNow(showAlert) {
 async function gdriveLoadNow() {
   if (!gdriveState.connected || !gdriveState.token) return;
   gdriveState.syncing = true; updateDriveBtn();
+  const yr = currentYear;
   try {
-    const fname = `ExpenseTracker_${currentYear}.xlsx`;
-    let fileId = gdriveState.fileId;
+    const fname  = 'ExpenseTracker_' + yr + '.xlsx';
+    let fileId   = gdriveState.getFileId(yr);
     if (!fileId) {
-      const res  = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${fname}' and trashed=false&fields=files(id,name)`, {
-        headers: {'Authorization': `Bearer ${gdriveState.token}`}
+      // Search by year-specific filename
+      const res  = await fetch("https://www.googleapis.com/drive/v3/files?q=name='" + fname + "' and trashed=false&fields=files(id,name)", {
+        headers: {'Authorization': 'Bearer ' + gdriveState.token}
       });
       const data = await res.json();
-      if (data.files && data.files.length > 0) { fileId = data.files[0].id; gdriveState.fileId = fileId; localStorage.setItem('et_gdrive_fid', fileId); }
+      if (data.files && data.files.length > 0) {
+        fileId = data.files[0].id;
+        gdriveState.setFileId(yr, fileId);
+      }
     }
     if (fileId) {
-      const res  = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-        headers: {'Authorization': `Bearer ${gdriveState.token}`}
+      const res  = await fetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media', {
+        headers: {'Authorization': 'Bearer ' + gdriveState.token}
       });
-      const abuf = await res.arrayBuffer();
-      const wb   = XLSX.read(abuf, {type:'array'});
-      // Import all sheets using existing importExcel logic internals
-      importWorkbook(wb, currentYear);
-      const now  = new Date();
-      gdriveState.lastSaved = 'loaded ' + now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-      unsavedChanges = false;
-      render();
-      console.log('✅ Loaded from Google Drive');
+      if (res.status === 404) {
+        // File deleted from Drive — clear stored ID and do first save
+        gdriveState.setFileId(yr, '');
+        await gdriveSaveNow(false);
+      } else {
+        const abuf = await res.arrayBuffer();
+        const wb   = XLSX.read(abuf, {type:'array'});
+        importWorkbook(wb, yr);
+        const now  = new Date();
+        gdriveState.lastSaved = 'loaded ' + now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+        unsavedChanges = false;
+        render();
+        console.log('✅ Loaded ' + yr + ' data from Google Drive');
+      }
     } else {
-      // No file yet — do first save
+      // No file for this year yet — do first save
       await gdriveSaveNow(false);
     }
   } catch(e) { console.error('Drive load error:', e); }
