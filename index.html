@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Expense Tracker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -42,6 +43,31 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:12px 2
 /* PAGES */
 .page{display:none;padding:20px 22px;}
 .page.active{display:block;}
+
+/* GOOGLE DRIVE */
+.gdrive-btn{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-family:var(--font-mono);font-size:11px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all .2s;white-space:nowrap;}
+.gdrive-btn:hover:not(.syncing){border-color:#4285f4;color:#4285f4;}
+.gdrive-btn.connected{border-color:var(--green);color:var(--green);}
+.gdrive-btn.syncing{border-color:var(--accent);color:var(--accent);}
+.gdrive-btn.syncing .gdrive-spinner{display:inline-block;width:10px;height:10px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;margin-right:3px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.gdrive-spinner{display:none;}
+.gdrive-setup-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:600;align-items:center;justify-content:center;}
+.gdrive-setup-overlay.open{display:flex;}
+.gdrive-setup-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;width:540px;max-width:95vw;max-height:90vh;overflow-y:auto;}
+.gdrive-setup-box h2{font-family:var(--font-head);font-size:16px;font-weight:800;margin-bottom:6px;}
+.gdrive-setup-box p{color:var(--muted);font-size:12px;line-height:1.7;margin-bottom:14px;}
+.gdrive-step{display:flex;gap:12px;margin-bottom:13px;align-items:flex-start;}
+.gdrive-step-num{background:var(--accent);color:#000;border-radius:50%;width:22px;height:22px;min-width:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px;}
+.gdrive-step-body{font-size:12px;color:var(--muted);line-height:1.7;flex:1;}
+.gdrive-step-body strong{color:var(--text);}
+.gdrive-step-body a{color:var(--accent2);}
+.copy-pill{display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-family:var(--font-mono);font-size:11px;color:var(--accent2);cursor:pointer;word-break:break-all;transition:border .2s;margin-top:4px;}
+.copy-pill:hover{border-color:var(--accent2);}
+.gdrive-menu{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px;z-index:600;min-width:190px;box-shadow:0 8px 28px rgba(0,0,0,.5);}
+.gdrive-menu button{display:block;width:100%;text-align:left;padding:7px 11px;font-size:12px;font-family:var(--font-mono);background:none;border:none;color:var(--text);cursor:pointer;border-radius:6px;}
+.gdrive-menu button:hover{background:var(--surface2);}
+.gdrive-menu hr{border:none;border-top:1px solid var(--border);margin:4px 0;}
 
 /* CARDS */
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:11px;margin-bottom:20px;}
@@ -217,11 +243,59 @@ tr:hover td{background:var(--surface2);}
     <button class="nav-tab" onclick="switchPage(&#39;inv-dashboard&#39;,this)">Inv. Dashboard</button>
     <button class="nav-tab" onclick="switchPage(&#39;income&#39;,this)">Income &amp; Savings</button>
     <button class="nav-tab" onclick="switchPage(&#39;investments&#39;,this)">Investments</button>
-    <button class="nav-tab" onclick="switchPage(&#39;transactions&#39;,this)">Transactions</button>
+    <button class="nav-tab" onclick="switchPage(&#39;overview&#39;,this)">Transactions</button>
     <button class="nav-tab" onclick="switchPage(&#39;creditcards&#39;,this)">💳 Credit Cards</button>
   </div>
   <button class="btn btn-ghost" style="font-size:11px;border-color:var(--border);" onclick="openCatModal()">⚙ Categories</button>
+  <button id="gdriveBtn" class="gdrive-btn" onclick="onDriveBtnClick()" title="Sync to Google Drive">
+    <span class="gdrive-spinner"></span>
+    <svg width="13" height="13" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>
+    <span id="gdriveBtnTxt">Connect Drive</span>
+  </button>
 </nav>
+
+<!-- GDRIVE SETUP MODAL -->
+<div class="gdrive-setup-overlay" id="gdriveSetupModal" onclick="if(event.target===this)closeGDriveSetup()">
+  <div class="gdrive-setup-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2>🔗 Connect Google Drive</h2>
+      <button onclick="closeGDriveSetup()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <p>Your tracker will <strong style="color:var(--text)">auto-save as an Excel file</strong> to your Google Drive after every change, and load it back when you reopen the page — from any browser or device.</p>
+    <div class="gdrive-step">
+      <div class="gdrive-step-num">1</div>
+      <div class="gdrive-step-body">Go to <a href="https://console.cloud.google.com/" target="_blank"><strong>Google Cloud Console</strong></a> → create a new project (e.g. "Expense Tracker")</div>
+    </div>
+    <div class="gdrive-step">
+      <div class="gdrive-step-num">2</div>
+      <div class="gdrive-step-body">Go to <strong>APIs & Services → Enable APIs</strong> → search and enable <strong>Google Drive API</strong> and <strong>Google Picker API</strong></div>
+    </div>
+    <div class="gdrive-step">
+      <div class="gdrive-step-num">3</div>
+      <div class="gdrive-step-body">Go to <strong>OAuth consent screen</strong> → External → fill App name → add your Gmail as a <strong>Test user</strong></div>
+    </div>
+    <div class="gdrive-step">
+      <div class="gdrive-step-num">4</div>
+      <div class="gdrive-step-body">Go to <strong>Credentials → Create OAuth Client ID</strong> → choose <strong>Web application</strong><br>
+        Under <strong>Authorised JavaScript origins</strong> add:<br>
+        <span class="copy-pill" id="originPill" onclick="copyOrigin()" title="Click to copy"></span>
+      </div>
+    </div>
+    <div class="gdrive-step">
+      <div class="gdrive-step-num">5</div>
+      <div class="gdrive-step-body">Copy your <strong>Client ID</strong> and paste below:
+        <div class="form-group" style="margin-top:8px;">
+          <input type="text" id="gdriveClientIdInput" placeholder="xxxxxxxx.apps.googleusercontent.com" style="font-size:12px;">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:6px;">
+      <button class="btn btn-primary" onclick="gdriveSetupSave()">Save & Connect →</button>
+      <button class="btn btn-ghost" onclick="closeGDriveSetup()">Cancel</button>
+      <button class="btn btn-ghost" style="color:var(--red);margin-left:auto;" id="gdriveDisconnectBtn" onclick="gdriveDisconnect()" style="display:none;">Disconnect</button>
+    </div>
+  </div>
+</div>
 
 <div class="month-bar" id="monthBar"><span class="year-badge" id="monthYearLabel">2026</span><button class="month-btn" onclick="selectMonth(0)">JAN</button><button class="month-btn" onclick="selectMonth(1)">FEB</button><button class="month-btn" onclick="selectMonth(2)">MAR</button><button class="month-btn" onclick="selectMonth(3)">APR</button><button class="month-btn active" onclick="selectMonth(4)">MAY</button><button class="month-btn" onclick="selectMonth(5)">JUN</button><button class="month-btn" onclick="selectMonth(6)">JUL</button><button class="month-btn" onclick="selectMonth(7)">AUG</button><button class="month-btn" onclick="selectMonth(8)">SEP</button><button class="month-btn" onclick="selectMonth(9)">OCT</button><button class="month-btn" onclick="selectMonth(10)">NOV</button><button class="month-btn" onclick="selectMonth(11)">DEC</button></div>
 
@@ -329,9 +403,7 @@ tr:hover td{background:var(--surface2);}
 </div>
 
 <!-- TRANSACTIONS -->
-<div id="page-transactions" class="page">
 <div id="tx-section-inner" style="margin-top:8px;">
-  <div id="syncBannerTx"></div>
   <div class="section-title">Add Transaction</div>
   <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;">
     <div class="form-group"><label>Date</label><input type="date" id="txDate"></div>
@@ -362,7 +434,6 @@ tr:hover td{background:var(--surface2);}
     <tbody id="txBody"></tbody></table>
   </div>
 
-</div>
 </div>
 
 <!-- INCOME & SAVINGS -->
@@ -2156,6 +2227,326 @@ function getInvData(year) {
 }
 function saveInvData(year, d) { localStorage.setItem(keyInv(year), JSON.stringify(d)); markUnsaved(); }
 
+
+// ═══════════════════════════════════════════════════════════
+// GOOGLE DRIVE AUTO-SYNC (saves as Excel, loads on open)
+// ═══════════════════════════════════════════════════════════
+const GDRIVE_EXCEL_NAME = 'ExpenseTracker_Data.xlsx';
+const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+const gdriveState = {
+  clientId:  localStorage.getItem('et_gdrive_cid') || '',
+  token:     null,
+  fileId:    localStorage.getItem('et_gdrive_fid') || '',
+  connected: false,
+  syncing:   false,
+  lastSaved: '',
+  saveTimer: null
+};
+
+// ── Button / UI ──────────────────────────────────────────
+function updateDriveBtn() {
+  const btn  = document.getElementById('gdriveBtn');
+  const txt  = document.getElementById('gdriveBtnTxt');
+  const spin = btn?.querySelector('.gdrive-spinner');
+  if (!btn) return;
+  btn.className = 'gdrive-btn' +
+    (gdriveState.syncing   ? ' syncing'   :
+     gdriveState.connected ? ' connected' : '');
+  txt.textContent = gdriveState.syncing   ? 'Syncing…' :
+                    gdriveState.connected ? 'Drive ✓'  : 'Connect Drive';
+  if (spin) spin.style.display = gdriveState.syncing ? 'inline-block' : 'none';
+}
+
+function onDriveBtnClick() {
+  if (gdriveState.connected) { showDriveMenu(); return; }
+  if (gdriveState.clientId)  { gdriveSignIn();  return; }
+  openGDriveSetup();
+}
+
+function showDriveMenu() {
+  document.getElementById('gdrvMenu')?.remove();
+  const btn  = document.getElementById('gdriveBtn');
+  const rect = btn.getBoundingClientRect();
+  const m    = document.createElement('div');
+  m.id = 'gdrvMenu'; m.className = 'gdrive-menu';
+  m.style.cssText = `top:${rect.bottom + 6}px;right:${window.innerWidth - rect.right}px;`;
+  m.innerHTML = `
+    <button onclick="gdriveSaveNow(true);document.getElementById('gdrvMenu').remove()">⬆&nbsp; Save to Drive now</button>
+    <button onclick="gdriveLoadNow();document.getElementById('gdrvMenu').remove()">⬇&nbsp; Load from Drive</button>
+    <hr>
+    <button onclick="openGDriveSetup();document.getElementById('gdrvMenu').remove()">⚙&nbsp; Settings</button>
+    <button style="color:var(--red)" onclick="gdriveDisconnect();document.getElementById('gdrvMenu').remove()">✕&nbsp; Disconnect</button>`;
+  document.body.appendChild(m);
+  setTimeout(() => {
+    const close = (e) => { if (!m.contains(e.target) && e.target !== btn) { m.remove(); document.removeEventListener('click', close); } };
+    document.addEventListener('click', close);
+  }, 50);
+}
+
+// ── Setup modal ──────────────────────────────────────────
+function openGDriveSetup() {
+  const pill = document.getElementById('originPill');
+  if (pill) { pill.textContent = location.origin; }
+  const inp = document.getElementById('gdriveClientIdInput');
+  if (inp) inp.value = gdriveState.clientId;
+  const dis = document.getElementById('gdriveDisconnectBtn');
+  if (dis) dis.style.display = gdriveState.clientId ? 'inline-flex' : 'none';
+  document.getElementById('gdriveSetupModal').classList.add('open');
+}
+function closeGDriveSetup() {
+  document.getElementById('gdriveSetupModal').classList.remove('open');
+}
+function copyOrigin() {
+  navigator.clipboard.writeText(location.origin).then(() => {
+    const p = document.getElementById('originPill');
+    const orig = p.textContent; p.textContent = 'Copied!';
+    setTimeout(() => p.textContent = orig, 1500);
+  });
+}
+function gdriveSetupSave() {
+  const val = document.getElementById('gdriveClientIdInput').value.trim();
+  if (!val || !val.includes('.apps.googleusercontent.com')) {
+    alert('Please enter a valid Google OAuth Client ID (ends with .apps.googleusercontent.com)'); return;
+  }
+  gdriveState.clientId = val;
+  localStorage.setItem('et_gdrive_cid', val);
+  closeGDriveSetup();
+  gdriveSignIn();
+}
+function gdriveDisconnect() {
+  gdriveState.token = null; gdriveState.connected = false;
+  gdriveState.fileId = ''; gdriveState.lastSaved = '';
+  localStorage.removeItem('et_gdrive_fid');
+  closeGDriveSetup();
+  updateDriveBtn(); renderSyncBanner();
+}
+
+// ── Auth ─────────────────────────────────────────────────
+function gdriveSignIn() {
+  if (!gdriveState.clientId) { openGDriveSetup(); return; }
+  try {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: gdriveState.clientId,
+      scope: GDRIVE_SCOPES,
+      callback: async (resp) => {
+        if (resp.error) { alert('Google sign-in failed: ' + resp.error); return; }
+        gdriveState.token = resp.access_token;
+        gdriveState.connected = true;
+        updateDriveBtn(); renderSyncBanner();
+        await gdriveLoadNow();   // load existing data first
+      }
+    });
+    client.requestAccessToken();
+  } catch(e) {
+    alert('Google sign-in error: ' + e.message + '. Make sure your Client ID is correct and the Google sign-in library has loaded.');
+  }
+}
+
+// ── Export workbook as ArrayBuffer (reuse existing exportExcel logic) ──
+function buildExcelBuffer(year) {
+  const yr = year || currentYear;
+  const wb = XLSX.utils.book_new();
+  // Transactions
+  const txRows = [['Year','Month','Date','Amount','Category','Description','Type']];
+  MONTHS.forEach((_,mi) => getData(yr,mi).tx.forEach(t =>
+    txRows.push([yr,MONTHS[mi],t.date,parseFloat(t.amount)||0,t.category,t.desc||'',t.type||'expense'])));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(txRows), 'Transactions');
+  // Income & Savings
+  const incRows = [['Year','Month','Salary','Other Income','Prev Balance','Note',...getSavingsCats()]];
+  MONTHS.forEach((_,mi) => {
+    const {income,savings} = getData(yr,mi);
+    incRows.push([yr,MONTHS[mi],income.salary||0,income.other||0,income.prev||0,income.note||'',
+      ...getSavingsCats().map(c=>savings[c]||0)]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(incRows), 'Income_Savings');
+  // Summary
+  const sumRows = [['Category','JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC','TOTAL']];
+  ['Income','Savings','Expenses','Balance'].forEach(cat => {
+    const vals = MONTHS.map((_,i) => { const t=calcMonthTotals(yr,i); return cat==='Income'?t.totalIncome:cat==='Savings'?t.totalSavings:cat==='Expenses'?t.totalExpenses:t.balance; });
+    sumRows.push([cat,...vals,vals.reduce((a,b)=>a+b,0)]);
+  });
+  getExpenseCats().forEach(cat => {
+    const vals = MONTHS.map((_,i)=>getData(yr,i).tx.filter(t=>t.category===cat).reduce((s,t)=>s+parseFloat(t.amount||0),0));
+    sumRows.push(['  '+cat,...vals,vals.reduce((a,b)=>a+b,0)]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumRows), `Summary_${yr}`);
+  // Portfolio
+  const inv = getInvData(yr);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Type','Year Start',...MONTHS],...inv.portfolio.map(p=>[p.type,p.yearStart,...p.months])]), 'Portfolio');
+  // Funds
+  const fcols = ['Owner','Fund Name','Type','Folio','Monthly SIP','Invested YS','Value YS'];
+  MONTHS.forEach(m=>{fcols.push(`Invested ${m}`,`Value ${m}`);});
+  const frows = [fcols];
+  inv.funds.forEach(f=>{const r=[f.owner,f.name,f.type,f.folio,f.sip,f.ysInvested,f.ysValue];f.months.forEach(m=>{r.push(m.invested||0,m.value||0);});frows.push(r);});
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(frows), 'MF_Equity');
+  return XLSX.write(wb, {bookType:'xlsx', type:'array'});
+}
+
+// ── Save to Drive ─────────────────────────────────────────
+function scheduleDriveSave() {
+  if (!gdriveState.connected) return;
+  clearTimeout(gdriveState.saveTimer);
+  gdriveState.saveTimer = setTimeout(() => gdriveSaveNow(false), 4000);
+}
+
+async function gdriveSaveNow(showAlert) {
+  if (!gdriveState.connected || !gdriveState.token || gdriveState.syncing) return;
+  gdriveState.syncing = true; updateDriveBtn();
+  try {
+    const buf  = buildExcelBuffer(currentYear);
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const fname = `ExpenseTracker_${currentYear}.xlsx`;
+
+    if (gdriveState.fileId) {
+      // Update existing
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${gdriveState.fileId}?uploadType=media`, {
+        method: 'PATCH',
+        headers: {'Authorization': `Bearer ${gdriveState.token}`, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
+        body: blob
+      });
+    } else {
+      // Find or create
+      const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${fname}' and trashed=false&fields=files(id,name)`, {
+        headers: {'Authorization': `Bearer ${gdriveState.token}`}
+      });
+      const found = await search.json();
+      if (found.files && found.files.length > 0) {
+        gdriveState.fileId = found.files[0].id;
+        localStorage.setItem('et_gdrive_fid', gdriveState.fileId);
+        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${gdriveState.fileId}?uploadType=media`, {
+          method: 'PATCH',
+          headers: {'Authorization': `Bearer ${gdriveState.token}`, 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
+          body: blob
+        });
+      } else {
+        // Create new file
+        const meta = JSON.stringify({name: fname, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        const form = new FormData();
+        form.append('metadata', new Blob([meta], {type:'application/json'}));
+        form.append('file', blob);
+        const res  = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+          method: 'POST', headers: {'Authorization': `Bearer ${gdriveState.token}`}, body: form
+        });
+        const data = await res.json();
+        gdriveState.fileId = data.id;
+        localStorage.setItem('et_gdrive_fid', gdriveState.fileId);
+      }
+    }
+    const now = new Date();
+    gdriveState.lastSaved = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    unsavedChanges = false;
+    if (showAlert) alert(`✅ Saved to Google Drive as ${fname}`);
+  } catch(e) {
+    console.error('Drive save error:', e);
+    if (showAlert) alert('❌ Save failed: ' + e.message);
+  }
+  gdriveState.syncing = false; updateDriveBtn(); renderSyncBanner();
+}
+
+// ── Load from Drive ───────────────────────────────────────
+async function gdriveLoadNow() {
+  if (!gdriveState.connected || !gdriveState.token) return;
+  gdriveState.syncing = true; updateDriveBtn();
+  try {
+    const fname = `ExpenseTracker_${currentYear}.xlsx`;
+    let fileId = gdriveState.fileId;
+    if (!fileId) {
+      const res  = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${fname}' and trashed=false&fields=files(id,name)`, {
+        headers: {'Authorization': `Bearer ${gdriveState.token}`}
+      });
+      const data = await res.json();
+      if (data.files && data.files.length > 0) { fileId = data.files[0].id; gdriveState.fileId = fileId; localStorage.setItem('et_gdrive_fid', fileId); }
+    }
+    if (fileId) {
+      const res  = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: {'Authorization': `Bearer ${gdriveState.token}`}
+      });
+      const abuf = await res.arrayBuffer();
+      const wb   = XLSX.read(abuf, {type:'array'});
+      // Import all sheets using existing importExcel logic internals
+      importWorkbook(wb, currentYear);
+      const now  = new Date();
+      gdriveState.lastSaved = 'loaded ' + now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+      unsavedChanges = false;
+      render();
+      console.log('✅ Loaded from Google Drive');
+    } else {
+      // No file yet — do first save
+      await gdriveSaveNow(false);
+    }
+  } catch(e) { console.error('Drive load error:', e); }
+  gdriveState.syncing = false; updateDriveBtn(); renderSyncBanner();
+}
+
+// ── Import workbook helper (extracted from importExcel) ───
+function importWorkbook(wb, fileYear) {
+  const txSheet = wb.Sheets['Transactions'];
+  if (txSheet) {
+    MONTHS.forEach((_,i)=>localStorage.setItem(key(fileYear,i,'tx'),JSON.stringify([])));
+    XLSX.utils.sheet_to_json(txSheet,{header:1}).slice(1).forEach(r=>{
+      if(!r[1]||!r[3])return;
+      const mi=MONTHS.indexOf(String(r[1]).toUpperCase()); if(mi<0)return;
+      const tx=JSON.parse(localStorage.getItem(key(fileYear,mi,'tx'))||'[]');
+      tx.push({date:r[2]||'',amount:parseFloat(r[3])||0,category:r[4]||'',desc:r[5]||'',type:r[6]||'expense'});
+      localStorage.setItem(key(fileYear,mi,'tx'),JSON.stringify(tx));
+    });
+  }
+  const isSheet = wb.Sheets['Income_Savings'];
+  if (isSheet) {
+    XLSX.utils.sheet_to_json(isSheet,{header:1}).slice(1).forEach(r=>{
+      if(!r[1])return; const mi=MONTHS.indexOf(String(r[1]).toUpperCase()); if(mi<0)return;
+      localStorage.setItem(key(fileYear,mi,'income'),JSON.stringify({salary:parseFloat(r[2])||0,other:parseFloat(r[3])||0,prev:parseFloat(r[4])||0,note:r[5]||''}));
+      const sav={}; getSavingsCats().forEach((c,j)=>{sav[c]=parseFloat(r[6+j])||0;});
+      localStorage.setItem(key(fileYear,mi,'savings'),JSON.stringify(sav));
+    });
+  }
+  const portSheet = wb.Sheets['Portfolio'];
+  if (portSheet) {
+    const inv=getInvData(fileYear);
+    XLSX.utils.sheet_to_json(portSheet,{header:1}).slice(1).forEach(r=>{
+      const p=inv.portfolio.find(x=>x.type===r[0]); if(p){p.yearStart=parseFloat(r[1])||0;p.months=MONTHS.map((_,i)=>parseFloat(r[2+i])||0);}
+    });
+    localStorage.setItem(keyInv(fileYear),JSON.stringify(inv));
+  }
+  const mfSheet = wb.Sheets['MF_Equity'];
+  if (mfSheet) {
+    const inv=getInvData(fileYear); inv.funds=[];
+    XLSX.utils.sheet_to_json(mfSheet,{header:1}).slice(1).forEach(r=>{
+      if(!r[1])return;
+      const months=MONTHS.map((_,i)=>({invested:parseFloat(r[7+i*2])||0,value:parseFloat(r[8+i*2])||0}));
+      inv.funds.push({owner:r[0]||'',name:r[1],type:r[2]||'',folio:r[3]||'',sip:parseFloat(r[4])||0,ysInvested:parseFloat(r[5])||0,ysValue:parseFloat(r[6])||0,months});
+    });
+    localStorage.setItem(keyInv(fileYear),JSON.stringify(inv));
+  }
+}
+
+// ── Hook markUnsaved to trigger auto-save ─────────────────
+const _markUnsavedOrig = markUnsaved;
+markUnsaved = function() { _markUnsavedOrig(); scheduleDriveSave(); };
+
+// ── Auto sign-in on load if client ID saved ───────────────
+window.addEventListener('load', () => {
+  if (gdriveState.clientId) {
+    // Silently try to get token without prompting
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: gdriveState.clientId,
+        scope: GDRIVE_SCOPES,
+        prompt: '',   // no prompt if already authorised
+        callback: async (resp) => {
+          if (resp.error) return; // silently fail
+          gdriveState.token = resp.access_token;
+          gdriveState.connected = true;
+          updateDriveBtn(); renderSyncBanner();
+          await gdriveLoadNow();
+        }
+      });
+      client.requestAccessToken({prompt:''});
+    } catch(e) { /* GSI not loaded yet, skip */ }
+  }
+});
+
 function markUnsaved() { unsavedChanges = true; renderSyncBanner(); }
 
 // ═══════════════════════════════════════════════════════════
@@ -2164,17 +2555,21 @@ function markUnsaved() { unsavedChanges = true; renderSyncBanner(); }
 function renderSyncBanner() {
   const el = document.getElementById('syncBanner');
   if (!el) return;
+  const driveInfo = gdriveState.connected
+    ? `&nbsp;·&nbsp;<span style="color:var(--green);font-size:11px;">● Drive: ${gdriveState.lastSaved ? 'saved ' + gdriveState.lastSaved : 'connected'}</span>`
+    : gdriveState.clientId
+      ? `&nbsp;·&nbsp;<span style="color:var(--muted);font-size:11px;">○ Drive: signed out</span>`
+      : `&nbsp;·&nbsp;<span style="color:var(--muted);font-size:11px;">○ Drive: not connected</span>`;
   el.innerHTML = `<div class="sync-banner">
     <div class="sync-info">
       <span class="dot ${unsavedChanges?'yellow':'green'}"></span>
-      ${unsavedChanges
-        ? '<strong>Unsaved changes</strong> — export to Excel to save'
-        : '<strong>All changes saved</strong> — synced to Excel'}
+      ${unsavedChanges ? '<strong>Unsaved changes</strong>' : '<strong>All saved</strong>'}
       &nbsp;·&nbsp; Year: <strong>${currentYear}</strong>
+      ${driveInfo}
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
       <label class="file-input-label" for="fileInput">⬆ Import Excel</label>
-      <button class="btn btn-green" onclick="exportExcel()">⬇ Export to Excel</button>
+      <button class="btn btn-green" onclick="exportExcel()">⬇ Export Excel</button>
     </div>
   </div>`;
 }
@@ -2239,6 +2634,8 @@ function exportExcel() {
   XLSX.writeFile(wb, `Expense_Tracker_${yr}.xlsx`);
   unsavedChanges = false;
   renderSyncBanner();
+  // Also push to Drive if connected
+  if (gdriveState.connected) gdriveSaveNow(false);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2354,8 +2751,7 @@ function selectMonth(i) {
 
 function render() {
   reloadCats();
-  if (currentPage==='overview')     renderDashboard();
-  if (currentPage==='transactions') renderTransactions();
+  if (currentPage==='overview')     { renderDashboard(); renderTransactions(); }
   if (currentPage==='income')       renderIncomeP();
   if (currentPage==='annual')       renderAnnual();
   if (currentPage==='investments')  renderInvestments();
@@ -2413,10 +2809,6 @@ function onTxTypeChange() {
 }
 
 function renderTransactions() {
-  // Mirror sync banner on transactions page
-  const txBanner = document.getElementById('syncBannerTx');
-  const mainBanner = document.getElementById('syncBanner');
-  if (txBanner && mainBanner) txBanner.innerHTML = mainBanner.innerHTML;
   document.getElementById('txMonthLabel').textContent = `${MONTHS[currentMonth]} ${currentYear}`;
   const {tx, savings} = getData(currentYear, currentMonth);
 
